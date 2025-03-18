@@ -74,6 +74,7 @@ nest-asyncio==1.6.0
 networkx==3.4.2
 numpy==2.1.1
 openai==0.28.0
+PyPDF2==3.0.1
 opencv-python==4.11.0.86
 opencv-python-headless==4.11.0.86
 openpyxl==3.1.5
