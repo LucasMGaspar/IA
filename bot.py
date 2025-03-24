@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import time
 import traceback
-from io import BytesIO
 import os
+from io import BytesIO
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -20,6 +20,10 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 def encontrar_campo_busca(driver, tempo_espera=10):
+    """
+    Tenta encontrar o campo de busca. Caso não encontre no 'home' (//*[@id="P_ENTREE_HOME"]),
+    procura no cabeçalho (//*[@id="P_ENTREE_ENTETE"]).
+    """
     try:
         return WebDriverWait(driver, tempo_espera).until(
             EC.presence_of_element_located((By.XPATH, '//*[@id="P_ENTREE_HOME"]'))
@@ -31,8 +35,9 @@ def encontrar_campo_busca(driver, tempo_espera=10):
 
 def iniciar_driver():
     """
-    Tenta iniciar o driver local usando caminhos alternativos para o binário.
-    Se falhar, tenta utilizar um WebDriver remoto, se configurado via variável de ambiente.
+    Tenta iniciar o WebDriver.
+    Se REMOTE_WEBDRIVER_URL estiver definida, utiliza o WebDriver remoto.
+    Caso contrário, tenta iniciar o driver local (que pode falhar no Streamlit Cloud).
     """
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")  
@@ -41,36 +46,43 @@ def iniciar_driver():
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     
-    # Tente diferentes caminhos para o binário do Chromium
-    for binary_path in ["/usr/bin/chromium-browser", "/usr/bin/chromium"]:
+    # Se a variável REMOTE_WEBDRIVER_URL estiver definida, use o remoto.
+    remote_url = os.environ.get("REMOTE_WEBDRIVER_URL")
+    if remote_url:
+        st.info("Usando WebDriver remoto em: " + remote_url)
+        try:
+            caps = DesiredCapabilities.CHROME.copy()
+            driver = webdriver.Remote(
+                command_executor=remote_url,
+                desired_capabilities=caps,
+                options=options
+            )
+            return driver
+        except Exception as ex:
+            st.error("Erro ao iniciar o WebDriver remoto: " + str(ex))
+            return None
+    else:
+        # Tenta iniciar o driver local
+        st.info("Tentando iniciar o WebDriver local...")
+        # Verifica se há um binário do Chrome/Chromium
+        binary_path = os.environ.get("CHROMIUM_BINARY_PATH", "/usr/bin/chromium-browser")
         if os.path.exists(binary_path):
             options.binary_location = binary_path
-            break
-    else:
-        st.error("Nenhum binário do Chromium encontrado no caminho padrão.")
-        return None
-
-    try:
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
-        return driver
-    except Exception as e:
-        st.error("Erro ao iniciar o Chrome WebDriver local: " + str(e))
-        # Tente usar WebDriver remoto, se configurado
-        remote_url = os.environ.get("REMOTE_WEBDRIVER_URL")
-        if remote_url:
-            st.info("Tentando usar WebDriver remoto em: " + remote_url)
-            try:
-                caps = DesiredCapabilities.CHROME.copy()
-                driver = webdriver.Remote(
-                    command_executor=remote_url,
-                    desired_capabilities=caps,
-                    options=options
-                )
-                return driver
-            except Exception as ex:
-                st.error("Erro ao iniciar o WebDriver remoto: " + str(ex))
-        return None
+        else:
+            # Tenta outro caminho
+            binary_path = os.environ.get("CHROMIUM_BINARY_PATH", "/usr/bin/chromium")
+            if os.path.exists(binary_path):
+                options.binary_location = binary_path
+            else:
+                st.error("Nenhum binário do Chromium encontrado. Defina a variável REMOTE_WEBDRIVER_URL para usar um driver remoto.")
+                return None
+        try:
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
+            return driver
+        except Exception as e:
+            st.error("Erro ao iniciar o Chrome WebDriver local: " + str(e))
+            return None
 
 def processar_imos(df_imos):
     driver = iniciar_driver()
@@ -95,12 +107,14 @@ def processar_imos(df_imos):
             imo_str = str(imo).strip()
             st.write(f"Processando IMO: {imo_str}")
             try:
+                # 1) Encontrar o campo de busca
                 campo_busca = encontrar_campo_busca(driver, tempo_espera=10)
                 campo_busca.clear()
                 campo_busca.send_keys(imo_str)
                 campo_busca.send_keys(Keys.RETURN)
                 time.sleep(5)
 
+                # 2) Capturar o nome do navio no resultado da pesquisa
                 try:
                     nome_navio_element = driver.find_element(By.XPATH, '//*[@id="ShipResultId"]/table/tbody/tr[1]/td[1]')
                     nome_navio = nome_navio_element.text.strip()
@@ -117,6 +131,7 @@ def processar_imos(df_imos):
                         st.write("Erro ao fechar alerta:", e)
                     continue
 
+                # 3) Clicar no link do IMO
                 xpath_imo_link = f"//a[contains(text(),'{imo_str}')]"
                 imo_link = WebDriverWait(driver, 15).until(
                     EC.element_to_be_clickable((By.XPATH, xpath_imo_link))
@@ -126,6 +141,7 @@ def processar_imos(df_imos):
                 imo_link.click()
                 st.write(f"Link contendo '{imo_str}' clicado com sucesso!")
 
+                # 4) Clicar no segundo elemento, se necessário
                 try:
                     segundo_elemento = WebDriverWait(driver, 10).until(
                         EC.element_to_be_clickable((By.XPATH, '//*[@id="body"]/div[6]/div/div/div/div/div/div/div[2]/a/div/div/div[1]/div/div/div/div/div/div/h3'))
@@ -143,6 +159,7 @@ def processar_imos(df_imos):
 
                 time.sleep(5)  # Aguarda a página detalhada
 
+                # --- Extração da tabela (Manager, Owner e 'Compania') ---
                 try:
                     tabela_xpath = '//*[@id="collapse3"]/div/div/div/div/div/div[1]/div[1]/div[3]/div/div/form/table/tbody'
                     tabela_body = WebDriverWait(driver, 20).until(
