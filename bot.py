@@ -17,7 +17,6 @@ from selenium.common.exceptions import (
     NoSuchElementException
 )
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 def encontrar_campo_busca(driver, tempo_espera=10):
     """
@@ -46,30 +45,22 @@ def iniciar_driver():
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     
-    # Se a variável REMOTE_WEBDRIVER_URL estiver definida, use o remoto.
     remote_url = os.environ.get("REMOTE_WEBDRIVER_URL")
     if remote_url:
         st.info("Usando WebDriver remoto em: " + remote_url)
         try:
-            caps = DesiredCapabilities.CHROME.copy()
-            driver = webdriver.Remote(
-                command_executor=remote_url,
-                desired_capabilities=caps,
-                options=options
-            )
+            driver = webdriver.Remote(command_executor=remote_url, options=options)
             return driver
         except Exception as ex:
             st.error("Erro ao iniciar o WebDriver remoto: " + str(ex))
             return None
     else:
-        # Tenta iniciar o driver local
         st.info("Tentando iniciar o WebDriver local...")
         # Verifica se há um binário do Chrome/Chromium
         binary_path = os.environ.get("CHROMIUM_BINARY_PATH", "/usr/bin/chromium-browser")
         if os.path.exists(binary_path):
             options.binary_location = binary_path
         else:
-            # Tenta outro caminho
             binary_path = os.environ.get("CHROMIUM_BINARY_PATH", "/usr/bin/chromium")
             if os.path.exists(binary_path):
                 options.binary_location = binary_path
