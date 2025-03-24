@@ -40,11 +40,8 @@ def processar_imos(df_imos):
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     
-    # Tente definir o binary_location se souber onde o Chrome/Chromium está instalado.
-    # Por exemplo, se o Chrome estiver em "/usr/bin/google-chrome":
-    options.binary_location = "/usr/bin/google-chrome"  
-    # Se estiver usando Chromium, pode ser:
-    # options.binary_location = "/usr/bin/chromium-browser"
+    # Ajuste o binary_location para o Chromium, que costuma estar instalado no Streamlit Cloud
+    options.binary_location = "/usr/bin/chromium-browser"
     
     # Inicializa o navegador com as opções configuradas
     service = Service(ChromeDriverManager().install())
