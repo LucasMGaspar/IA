@@ -34,13 +34,26 @@ def encontrar_campo_busca(driver, tempo_espera=10):
 def processar_imos(df_imos):
     # Configura as opções do Chrome para rodar em modo headless
     options = webdriver.ChromeOptions()
-    options.add_argument("--headless")
+    options.add_argument("--headless")  # Modo headless
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    
+    # Tente definir o binary_location se souber onde o Chrome/Chromium está instalado.
+    # Por exemplo, se o Chrome estiver em "/usr/bin/google-chrome":
+    options.binary_location = "/usr/bin/google-chrome"  
+    # Se estiver usando Chromium, pode ser:
+    # options.binary_location = "/usr/bin/chromium-browser"
     
     # Inicializa o navegador com as opções configuradas
     service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
+    try:
+        driver = webdriver.Chrome(service=service, options=options)
+    except Exception as e:
+        st.error("Erro ao iniciar o Chrome WebDriver: " + str(e))
+        return None
+
     todos_os_dados = []
     
     try:
