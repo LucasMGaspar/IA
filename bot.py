@@ -32,9 +32,15 @@ def encontrar_campo_busca(driver, tempo_espera=10):
         )
 
 def processar_imos(df_imos):
-    # Inicializa o navegador
+    # Configura as opções do Chrome para rodar em modo headless
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    
+    # Inicializa o navegador com as opções configuradas
     service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service)
+    driver = webdriver.Chrome(service=service, options=options)
     todos_os_dados = []
     
     try:
@@ -48,16 +54,19 @@ def processar_imos(df_imos):
         password_field.send_keys(Keys.RETURN)
         time.sleep(5)
 
+        # --- LOOP para cada IMO ---
         for imo in df_imos["IMO"]:
             imo_str = str(imo).strip()
             st.write(f"Processando IMO: {imo_str}")
             try:
+                # 1) Encontrar o campo de busca
                 campo_busca = encontrar_campo_busca(driver, tempo_espera=10)
                 campo_busca.clear()
                 campo_busca.send_keys(imo_str)
                 campo_busca.send_keys(Keys.RETURN)
                 time.sleep(5)
 
+                # 2) Capturar o nome do navio no resultado da pesquisa
                 try:
                     nome_navio_element = driver.find_element(By.XPATH, '//*[@id="ShipResultId"]/table/tbody/tr[1]/td[1]')
                     nome_navio = nome_navio_element.text.strip()
@@ -74,6 +83,7 @@ def processar_imos(df_imos):
                         st.write("Erro ao fechar alerta:", e)
                     continue
 
+                # 3) Clicar no link do IMO
                 xpath_imo_link = f"//a[contains(text(),'{imo_str}')]"
                 imo_link = WebDriverWait(driver, 15).until(
                     EC.element_to_be_clickable((By.XPATH, xpath_imo_link))
@@ -83,6 +93,7 @@ def processar_imos(df_imos):
                 imo_link.click()
                 st.write(f"Link contendo '{imo_str}' clicado com sucesso!")
 
+                # 4) Clicar no segundo elemento, se necessário
                 try:
                     segundo_elemento = WebDriverWait(driver, 10).until(
                         EC.element_to_be_clickable((By.XPATH, '//*[@id="body"]/div[6]/div/div/div/div/div/div/div[2]/a/div/div/div[1]/div/div/div/div/div/div/h3'))
@@ -100,6 +111,7 @@ def processar_imos(df_imos):
 
                 time.sleep(5)  # Aguarda a página detalhada
 
+                # --- Extração da tabela (Manager, Owner e 'Compania') ---
                 try:
                     tabela_xpath = '//*[@id="collapse3"]/div/div/div/div/div/div[1]/div[1]/div[3]/div/div/form/table/tbody'
                     tabela_body = WebDriverWait(driver, 20).until(
@@ -143,7 +155,7 @@ def processar_imos(df_imos):
                 traceback.print_exc()
                 continue
 
-        # Converte os dados para DataFrame
+        # Converte os dados coletados em um DataFrame
         df_resultado = pd.DataFrame(todos_os_dados)
         return df_resultado
     except Exception as e:
@@ -152,18 +164,17 @@ def processar_imos(df_imos):
         driver.quit()
         st.write("Navegador fechado.")
 
-# --- Interface Streamlit ---
+# --- Interface do Streamlit ---
 st.title("Scraping de Dados - Equasis")
 
 uploaded_file = st.file_uploader("Selecione o arquivo Excel com a lista de IMOs", type=["xlsx", "xls"])
 if uploaded_file is not None:
     try:
-        # Lê o arquivo Excel enviado
         df_imos = pd.read_excel(BytesIO(uploaded_file.read()))
         st.write("Arquivo carregado com sucesso!")
         st.write(df_imos.head())
     except Exception as e:
-        st.error("Erro ao ler o arquivo:" + str(e))
+        st.error("Erro ao ler o arquivo: " + str(e))
 
 if st.button("Iniciar Extração"):
     if uploaded_file is None:
@@ -174,7 +185,7 @@ if st.button("Iniciar Extração"):
             if df_resultado is not None and not df_resultado.empty:
                 st.success("Processo concluído!")
                 st.dataframe(df_resultado)
-                # Oferece para baixar o resultado
+                # Função para converter DataFrame para Excel
                 @st.cache_data
                 def convert_df(df):
                     return df.to_excel(index=False).encode('utf-8')
